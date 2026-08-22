@@ -2,7 +2,8 @@ import { useState } from 'react';
 import './AttendanceTracking.css';
 
 function AttendanceTracking() {
-  const [viewMode, setViewMode] = useState('daily'); // daily or weekly
+
+  const [viewMode, setViewMode] = useState('daily'); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [employees, setEmployees] = useState([
     { id: 1, name: 'John Doe', status: 'Present', checkIn: '09:00 AM', checkOut: '05:30 PM' },
@@ -15,7 +16,6 @@ function AttendanceTracking() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showCheckModal, setShowCheckModal] = useState(false);
 
-  // Get current week dates
   const getWeekDates = (date) => {
     const curr = new Date(date);
     const first = curr.getDate() - curr.getDay();
@@ -27,23 +27,22 @@ function AttendanceTracking() {
     return weekDates;
   };
 
-  // Get day of week name
+ 
   const getDayName = (date) => {
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   };
 
-  // Format date
   const formatDate = (date) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Get current time
+  
   const getCurrentTime = () => {
     const now = new Date();
     return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
-  // Handle check-in/check-out
+  
   const handleCheckInOut = (employeeId, action) => {
     const updatedEmployees = employees.map(emp => {
       if (emp.id === employeeId) {
@@ -61,7 +60,6 @@ function AttendanceTracking() {
     setSelectedEmployee(null);
   };
 
-  // Update status
   const updateStatus = (employeeId, newStatus) => {
     const updatedEmployees = employees.map(emp => {
       if (emp.id === employeeId) {
