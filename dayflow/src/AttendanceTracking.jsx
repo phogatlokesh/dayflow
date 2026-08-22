@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './AttendanceTracking.css';
 
-function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com', userDesignation = 'Software Engineer' }) {
+function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com' }) {
 
   const [viewMode, setViewMode] = useState('daily'); 
   const [currentDate, setCurrentDate] = useState(new Date());

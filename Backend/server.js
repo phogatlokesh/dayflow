@@ -36,7 +36,9 @@ async function verifyValue(value, hash) { const [salt, key] = hash.split(':'); c
 function requireConfig(...keys) { return keys.every((key) => process.env[key]); }
 function createToken(user) { const secret = process.env.AUTH_TOKEN_SECRET; if (!secret) throw new Error('AUTH_TOKEN_SECRET is not configured.'); const payload = Buffer.from(JSON.stringify({ sub: user.employee_id, email: user.email, role: user.role, exp: Date.now() + 8 * 60 * 60 * 1000 })).toString('base64url'); const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url'); return `${payload}.${signature}`; }
 function authenticate(requiredRoles = []) { return (req, res, next) => { try { const token = req.headers.authorization?.replace('Bearer ', ''); if (!token) return res.status(401).json({ message: 'Sign in is required.' }); const [payload, signature] = token.split('.'); const expected = crypto.createHmac('sha256', process.env.AUTH_TOKEN_SECRET || '').update(payload).digest('base64url'); if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return res.status(401).json({ message: 'Invalid session.' }); const user = JSON.parse(Buffer.from(payload, 'base64url').toString()); if (user.exp < Date.now()) return res.status(401).json({ message: 'Your session has expired. Please sign in again.' }); if (requiredRoles.length && !requiredRoles.includes(user.role)) return res.status(403).json({ message: 'You do not have permission for this action.' }); req.user = user; next(); } catch { return res.status(401).json({ message: 'Invalid session.' }); } }; }
-async function sendOtp(email, code) { if (!requireConfig('SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM')) throw new Error('Email verification is not configured. Add SMTP settings to Backend/.env.'); const transport = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }); await transport.sendMail({ from: process.env.SMTP_FROM, to: email, subject: 'Your Dayflow verification code', text: `Your Dayflow verification code is ${code}. It expires in ${otpLifetimeMinutes} minutes. Do not share this code.` }); }
+function createMailTransport() { if (!requireConfig('SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM')) throw new Error('Email delivery is not configured. Add SMTP settings to Backend/.env.'); return nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD.replace(/\s/g, '') } }); }
+async function sendOtp(email, code) { const transport = createMailTransport(); await transport.sendMail({ from: process.env.SMTP_FROM, to: email, subject: 'Your Dayflow verification code', text: `Your Dayflow verification code is ${code}. It expires in ${otpLifetimeMinutes} minutes. Do not share this code.` }); }
+async function notifyHrOfSignup(employee) { const transport = createMailTransport(); const hrEmail = process.env.HR_EMAIL || process.env.SMTP_USER; await transport.sendMail({ from: process.env.SMTP_FROM, to: hrEmail, subject: `Dayflow approval needed: ${employee.employee_id}`, text: `A new employee has verified their email and is waiting for approval.\n\nEmployee ID: ${employee.employee_id}\nEmail: ${employee.email}\nDesignation: ${employee.designation || 'Not provided'}\n\nOpen the Dayflow Employee approvals screen to approve or reject this request.` }); }
 
 app.post('/api/auth/signup/request', async (req, res) => {
   const { employeeId, email, password, designation = '' } = req.body;
@@ -59,10 +61,41 @@ app.post('/api/auth/signup/verify', async (req, res) => {
     const request = pending.rows[0];
     if (!request || request.otp_expires_at < new Date()) return res.status(400).json({ message: 'This verification code has expired. Start sign-up again.' });
     if (!(await verifyValue(code || '', request.otp_hash))) return res.status(400).json({ message: 'That verification code is incorrect.' });
-    await pool.query('INSERT INTO users (employee_id, email, password_hash, role, approval_status) VALUES ($1, $2, $3, $4, $5)', [request.employee_id, request.email, request.password_hash, 'Employee', 'pending']);
+    await pool.query('INSERT INTO users (employee_id, email, password_hash, role, approval_status, designation) VALUES ($1, $2, $3, $4, $5, $6)', [request.employee_id, request.email, request.password_hash, 'Employee', 'pending', request.designation || '']);
     await pool.query('DELETE FROM pending_signups WHERE id = $1', [request.id]);
+    try { await notifyHrOfSignup(request); } catch (notificationError) { console.error('HR approval notification failed:', notificationError.message); return res.json({ message: 'Email verified. Your approval request was saved, but HR notification email could not be delivered.' }); }
     return res.json({ message: 'Email verified. Your details have been sent to HR for approval.' });
   } catch (error) { console.error('OTP verification failed:', error); return res.status(500).json({ message: 'Unable to verify your code.' }); }
+});
+
+app.post('/api/auth/password-reset/request', async (req, res) => {
+  const { employeeId, email } = req.body;
+  if (!employeeId || !email) return res.status(400).json({ message: 'Employee ID and email are required.' });
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const result = await pool.query('SELECT employee_id, email FROM users WHERE employee_id = $1 AND email = $2', [employeeId.trim(), normalizedEmail]);
+    if (!result.rowCount) return res.status(404).json({ message: 'No employee account matches that ID and email.' });
+    const code = crypto.randomInt(100000, 1000000).toString();
+    await pool.query('DELETE FROM password_resets WHERE employee_id = $1', [employeeId.trim()]);
+    await pool.query('INSERT INTO password_resets (employee_id, email, otp_hash, otp_expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL \'10 minutes\')', [employeeId.trim(), normalizedEmail, await hashValue(code)]);
+    await sendOtp(normalizedEmail, code);
+    return res.json({ message: 'A password reset code has been sent to your employee email.' });
+  } catch (error) { console.error('Password reset request failed:', error); return res.status(500).json({ message: 'Unable to send a password reset code.' }); }
+});
+
+app.post('/api/auth/password-reset/confirm', async (req, res) => {
+  const { employeeId, email, code, newPassword } = req.body;
+  if (!employeeId || !email || !code || !newPassword) return res.status(400).json({ message: 'Employee ID, email, OTP, and new password are required.' });
+  if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(newPassword)) return res.status(400).json({ message: 'Use 8+ characters with uppercase, lowercase, a number, and a symbol.' });
+  try {
+    const result = await pool.query('SELECT * FROM password_resets WHERE employee_id = $1 AND email = $2', [employeeId.trim(), email.trim().toLowerCase()]);
+    const reset = result.rows[0];
+    if (!reset || reset.otp_expires_at < new Date()) return res.status(400).json({ message: 'This reset code has expired. Request a new code.' });
+    if (!(await verifyValue(code, reset.otp_hash))) return res.status(400).json({ message: 'That reset code is incorrect.' });
+    await pool.query('UPDATE users SET password_hash = $1 WHERE employee_id = $2 AND email = $3', [await hashValue(newPassword), reset.employee_id, reset.email]);
+    await pool.query('DELETE FROM password_resets WHERE id = $1', [reset.id]);
+    return res.json({ message: 'Password changed successfully. You can now sign in.' });
+  } catch (error) { console.error('Password reset confirmation failed:', error); return res.status(500).json({ message: 'Unable to change your password.' }); }
 });
 
 app.post('/api/auth/signin', async (req, res) => {
@@ -79,6 +112,7 @@ app.post('/api/auth/signin', async (req, res) => {
 });
 
 app.get('/api/admin/pending-users', authenticate(['HR', 'Admin']), async (_req, res) => { const result = await pool.query("SELECT employee_id, email, created_at FROM users WHERE approval_status = 'pending' ORDER BY created_at ASC"); res.json({ users: result.rows }); });
+app.get('/api/admin/employees', authenticate(['HR', 'Admin']), async (_req, res) => { const result = await pool.query(`SELECT employee_id, email, role, approval_status, designation, first_name, last_name, phone, department, manager, start_date, employment, salary, pay_schedule, created_at FROM users UNION ALL SELECT employee_id, email, 'Employee' AS role, 'email_verification_pending' AS approval_status, designation, '' AS first_name, '' AS last_name, '' AS phone, '' AS department, '' AS manager, '' AS start_date, '' AS employment, '' AS salary, '' AS pay_schedule, created_at FROM pending_signups ORDER BY employee_id`); res.json({ employees: result.rows }); });
 app.patch('/api/admin/pending-users/:employeeId', authenticate(['HR', 'Admin']), async (req, res) => { const status = req.body.status === 'approved' ? 'approved' : req.body.status === 'rejected' ? 'rejected' : null; if (!status) return res.status(400).json({ message: 'Use approved or rejected.' }); const result = await pool.query('UPDATE users SET approval_status = $1 WHERE employee_id = $2 AND approval_status = $3 RETURNING employee_id, email, approval_status', [status, req.params.employeeId, 'pending']); if (!result.rowCount) return res.status(404).json({ message: 'Pending employee not found.' }); res.json({ user: result.rows[0] }); });
 
 async function startServer() {
@@ -87,6 +121,7 @@ async function startServer() {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'");
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS designation VARCHAR(100) NOT NULL DEFAULT 'Software Engineer', ADD COLUMN IF NOT EXISTS first_name VARCHAR(100) NOT NULL DEFAULT 'New', ADD COLUMN IF NOT EXISTS last_name VARCHAR(100) NOT NULL DEFAULT 'Employee', ADD COLUMN IF NOT EXISTS phone VARCHAR(50) NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS department VARCHAR(100) NOT NULL DEFAULT 'Engineering', ADD COLUMN IF NOT EXISTS manager VARCHAR(100) NOT NULL DEFAULT 'HR', ADD COLUMN IF NOT EXISTS start_date VARCHAR(100) NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS employment VARCHAR(50) NOT NULL DEFAULT 'Full-time', ADD COLUMN IF NOT EXISTS salary VARCHAR(50) NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS pay_schedule VARCHAR(50) NOT NULL DEFAULT 'Monthly'");
   await pool.query(`CREATE TABLE IF NOT EXISTS pending_signups (id SERIAL PRIMARY KEY, employee_id VARCHAR(100) NOT NULL UNIQUE, email VARCHAR(255) NOT NULL UNIQUE, password_hash TEXT NOT NULL, designation VARCHAR(100), otp_hash TEXT NOT NULL, otp_expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS password_resets (id SERIAL PRIMARY KEY, employee_id VARCHAR(100) NOT NULL, email VARCHAR(255) NOT NULL, otp_hash TEXT NOT NULL, otp_expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const PORT = process.env.PORT || 5000; app.listen(PORT, '0.0.0.0', () => console.log(`Backend running on http://localhost:${PORT}`));
 }
 startServer().catch((error) => { console.error('Database initialization failed:', error.message); process.exitCode = 1; });

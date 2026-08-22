@@ -1,4 +1,3 @@
-import React from 'react'
 import './Dashboard.css'
 
 export default function Dashboard({ userRole, userName, userEmail, userDesignation, onNavigate, onLogout }) {
@@ -9,10 +8,15 @@ export default function Dashboard({ userRole, userName, userEmail, userDesignati
     { type: 'info', icon: 'ℹ️', title: 'Payroll Processed', description: 'Your salary for August has been credited to your account.' }
   ]
 
-  const quickStats = [
-    { label: 'Today\'s Status', value: 'Present', color: '#4CAF50' },
+  const isManagement = userRole === 'HR' || userRole === 'Admin'
+  const quickStats = isManagement ? [
+    { label: 'Team members', value: '45', color: '#4CAF50' },
+    { label: 'Present today', value: '42', color: '#2196F3' },
+    { label: 'Pending reviews', value: '8', color: '#FF9800' }
+  ] : [
+    { label: 'Today\'s status', value: 'Present', color: '#4CAF50' },
     { label: 'Attendance', value: '92%', color: '#2196F3' },
-    { label: 'Leave Balance', value: '8 days', color: '#FF9800' }
+    { label: 'Leave balance', value: '8 days', color: '#FF9800' }
   ]
 
   const quickAccess = [
@@ -42,8 +46,9 @@ export default function Dashboard({ userRole, userName, userEmail, userDesignati
       {/* Welcome Header */}
       <div className="dashboard-header">
         <div className="welcome-content">
-          <h1>Welcome back, {userName || 'User'}!</h1>
-          <p>{userDesignation} at Dayflow</p>
+          <p className="dashboard-kicker">{isManagement ? 'People operations' : 'Your day at a glance'}</p>
+          <h1>{isManagement ? 'Good morning, team.' : `Welcome back, ${userName || 'User'}!`}</h1>
+          <p>{isManagement ? `${userRole} workspace at Dayflow` : `${userDesignation} at Dayflow · ${userEmail || 'Your account'}`}</p>
         </div>
         <div className="header-time">
           <div className="current-time">{getCurrentTime()}</div>
@@ -116,7 +121,7 @@ export default function Dashboard({ userRole, userName, userEmail, userDesignati
       </section>
 
       {/* HR Section */}
-      {userRole === 'HR' && (
+      {isManagement && (
         <section className="hr-section">
           <h2>Team Overview</h2>
           <div className="hr-stats">
