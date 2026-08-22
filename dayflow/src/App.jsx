@@ -54,8 +54,12 @@ function App() {
         setFeedback({ type: 'success', text: 'Account created. You can now sign in.' })
         setView('signin')
       }
-    } catch {
-      setFeedback({ type: 'error', text: 'The server is unavailable. Please try again shortly.' })
+    } catch (error) {
+      console.error('Request failed:', error);
+      const errorMsg = error.message === 'Failed to fetch' 
+        ? 'Cannot reach the server. Check if backend is running and accessible.' 
+        : error.message;
+      setFeedback({ type: 'error', text: `The server is unavailable: ${errorMsg}` })
     }
   }
 

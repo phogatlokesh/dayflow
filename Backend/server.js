@@ -91,8 +91,12 @@ async function startServer() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  app.listen(process.env.PORT || 5000, () => {
-    console.log('Backend server running on http://localhost:5000');
+  const PORT = process.env.PORT || 5000;
+  const HOST = '0.0.0.0'; // Listen on all network interfaces
+  app.listen(PORT, HOST, () => {
+    console.log(`Backend server running on http://0.0.0.0:${PORT}`);
+    console.log(`Access from this machine: http://localhost:${PORT}`);
+    console.log(`Access from other machines on WiFi: http://<your-ip>:${PORT}`);
   });
 }
 
