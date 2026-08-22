@@ -3,6 +3,7 @@ import './App.css'
 import AttendanceTracking from './AttendanceTracking'
 import EmployeeProfile from './EmployeeProfile'
 import LeaveManagement from './LeaveManagement'
+import UserApprovals from './UserApprovals'
 import PayrollManagement from './PayrollManagement'
 import Dashboard from './Dashboard'
 
@@ -26,6 +27,9 @@ function App() {
   const [userRole, setUserRole] = useState('Employee')
   const [userId, setUserId] = useState(null)
   const [userDesignation, setUserDesignation] = useState('Software Engineer')
+  const [signupStep, setSignupStep] = useState('details')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [authToken, setAuthToken] = useState('')
   const [userProfile, setUserProfile] = useState(null)
 
   const updateForm = (event) => {
@@ -35,52 +39,34 @@ function App() {
 
   const submitForm = async (event) => {
     event.preventDefault()
-    if (view === 'signup' && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(form.password)) {
+    if (view === 'signup' && signupStep === 'details' && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(form.password)) {
       setFeedback({ type: 'error', text: 'Use 8+ characters with uppercase, lowercase, a number, and a symbol.' })
       return
     }
-
+    const endpoint = view === 'signin' ? 'signin' : signupStep === 'verify' ? 'signup/verify' : 'signup/request'
+    const body = view === 'signin' ? { email: form.email, password: form.password } : signupStep === 'verify' ? { email: form.email, code: verificationCode } : { employeeId: form.employeeId, email: form.email, password: form.password, designation: form.designation }
     try {
-      const response = await fetch(`${API_URL}/api/auth/${view}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
+      const response = await fetch(`${API_URL}/api/auth/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await response.json()
-      if (!response.ok) {
-        setFeedback({ type: 'error', text: data.message || 'Authentication failed. Please try again.' })
-        return
-      }
-      if (view === 'signin') {
-        setIsLoggedIn(true)
-        setUserRole(data.user?.role || 'Employee')
-        setUserDesignation(data.profile?.role || 'Software Engineer')
-        setUserId(data.user?.employee_id || form.employeeId)
-        setUserProfile(data.profile)
-      } else {
-        setFeedback({ type: 'success', text: 'Account created. You can now sign in.' })
-        setView('signin')
-      }
-    } catch (error) {
-      console.error('Request failed:', error);
-      const errorMsg = error.message === 'Failed to fetch' 
-        ? 'Cannot reach the server. Check if backend is running and accessible.' 
-        : error.message;
-      setFeedback({ type: 'error', text: `The server is unavailable: ${errorMsg}` })
-    }
+      if (!response.ok) { setFeedback({ type: 'error', text: data.message || 'Request failed. Please try again.' }); return }
+      if (view === 'signin') { setIsLoggedIn(true); setUserRole(data.user?.role || 'Employee'); setUserDesignation(form.designation || 'Software Engineer'); setUserId(data.user?.email || form.email); setAuthToken(data.token || ''); return }
+      if (signupStep === 'details') { setSignupStep('verify'); setFeedback({ type: 'success', text: 'We sent a 6-digit code to your personal email.' }); return }
+      setFeedback({ type: 'success', text: data.message || 'Email verified. Your request is now with HR for approval.' }); setSignupStep('details'); setVerificationCode(''); setView('signin')
+    } catch (error) { setFeedback({ type: 'error', text: 'The server is unavailable. Please try again later.' }) }
   }
 
-
   if (isLoggedIn) {
-    return <main className="dashboard-page"><nav className="topbar"><a href="/" className="brand"><span className="brand-mark">d</span>dayflow</a><div className="workspace-nav"><button className={dashboardView === 'dashboard' ? 'active' : ''} onClick={() => setDashboardView('dashboard')}>Dashboard</button><button className={dashboardView === 'profile' ? 'active' : ''} onClick={() => setDashboardView('profile')}>My profile</button><button className={dashboardView === 'attendance' ? 'active' : ''} onClick={() => setDashboardView('attendance')}>Attendance</button><button className={dashboardView === 'leave' ? 'active' : ''} onClick={() => setDashboardView('leave')}>Leave & time off</button><button className={dashboardView === 'payroll' ? 'active' : ''} onClick={() => setDashboardView('payroll')}>Payroll</button></div><button className="secondary-button" onClick={() => setIsLoggedIn(false)}>Sign out</button></nav>{dashboardView === 'dashboard' ? <Dashboard userRole={userRole} userName={userProfile?.name || form.email} userEmail={userProfile?.email || form.email} userDesignation={userDesignation} onNavigate={setDashboardView} onLogout={() => setIsLoggedIn(false)} /> : dashboardView === 'profile' ? <EmployeeProfile profile={userProfile} /> : dashboardView === 'attendance' ? <AttendanceTracking userRole={userRole} userId={userId} userDesignation={userDesignation} /> : dashboardView === 'leave' ? <LeaveManagement userRole={userRole} userId={userId} /> : <PayrollManagement userRole={userRole} userId={userId} />}</main>
+    return <main className="dashboard-page"><nav className="topbar"><a href="/" className="brand"><span className="brand-mark">d</span>dayflow</a><div className="workspace-nav"><button className={dashboardView === 'dashboard' ? 'active' : ''} onClick={() => setDashboardView('dashboard')}>Dashboard</button><button className={dashboardView === 'profile' ? 'active' : ''} onClick={() => setDashboardView('profile')}>My profile</button><button className={dashboardView === 'attendance' ? 'active' : ''} onClick={() => setDashboardView('attendance')}>Attendance</button><button className={dashboardView === 'leave' ? 'active' : ''} onClick={() => setDashboardView('leave')}>Leave & time off</button>{(userRole === 'HR' || userRole === 'Admin') && <button className={dashboardView === 'approvals' ? 'active' : ''} onClick={() => setDashboardView('approvals')}>Employee approvals</button>}<button className={dashboardView === 'payroll' ? 'active' : ''} onClick={() => setDashboardView('payroll')}>Payroll</button></div><button className="secondary-button" onClick={() => setIsLoggedIn(false)}>Sign out</button></nav>{dashboardView === 'dashboard' ? <Dashboard userRole={userRole} userName={userProfile?.name || form.email} userEmail={userProfile?.email || form.email} userDesignation={userDesignation} onNavigate={setDashboardView} onLogout={() => setIsLoggedIn(false)} /> : dashboardView === 'profile' ? <EmployeeProfile profile={userProfile} /> : dashboardView === 'attendance' ? <AttendanceTracking userRole={userRole} userId={userId} userDesignation={userDesignation} /> : dashboardView === 'leave' ? <LeaveManagement userRole={userRole} userId={userId} /> : <PayrollManagement userRole={userRole} userId={userId} />}</main>
   }
 
   const action = view === 'signin' ? 'Sign in' : 'Sign up'
 
-  return <main className="auth-page"><section className="brand-panel"><div className="brand-lockup"><span className="brand-mark">d</span><span>dayflow</span></div><div className="brand-copy"><p className="eyebrow">A calmer way to work</p><h1>Make room for<br /><em>good work.</em></h1><p>One clear place for your people, priorities, and daily rhythm.</p></div><p className="principle">Clarity is the beginning of momentum.</p></section><section className="form-panel"><div className="form-inner"><div className="mobile-brand brand-lockup"><span className="brand-mark">d</span><span>dayflow</span></div><header className="form-heading"><p className="eyebrow">Your workspace awaits</p><h2>{view === 'signin' ? 'Welcome back.' : 'Start your flow.'}</h2><p>{view === 'signin' ? 'Sign in to pick up where you left off.' : 'Create your account in less than a minute.'}</p></header><div className="tabs" role="tablist"><button className={view === 'signin' ? 'active' : ''} onClick={() => { setView('signin'); setFeedback(null) }} role="tab" aria-selected={view === 'signin'}>Sign in</button><button className={view === 'signup' ? 'active' : ''} onClick={() => { setView('signup'); setFeedback(null) }} role="tab" aria-selected={view === 'signup'}>Sign up</button></div><div className="social-auth" aria-label={`${action} with a provider`}><button type="button" className="provider-button"><GoogleIcon />Continue with Google</button><button type="button" className="provider-button"><MicrosoftIcon />Continue with Outlook</button></div><div className="auth-divider"><span>or continue with email</span></div><form onSubmit={submitForm}><label>Employee ID<input name="employeeId" value={form.employeeId} onChange={updateForm} placeholder="e.g. DF-1048" required /></label><label>Email address<input name="email" type="email" value={form.email} onChange={updateForm} placeholder="you@company.com" required /></label><label>Password<div className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={updateForm} placeholder="Enter your password" required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Hide' : 'Show'}</button></div></label>{view === 'signup' && <label>Role<select name="role" value={form.role} onChange={updateForm}><option>Employee</option><option>HR</option><option>Admin</option></select></label>}{view === 'signup' && <label>Designation<select name="designation" value={form.designation} onChange={updateForm}><option>Software Engineer</option><option>Senior Software Engineer</option><option>Manager</option><option>Project Manager</option><option>HR Manager</option><option>Business Analyst</option><option>Quality Assurance</option><option>DevOps Engineer</option></select></label>}{view === 'signup' && <p className="password-rules">8+ characters · uppercase · lowercase · number · symbol</p>}{feedback && <p className={`feedback ${feedback.type}`} role="alert">{feedback.text}</p>}<button className="submit-button" type="submit">{view === 'signin' ? 'Sign in to Dayflow' : 'Create account'} <span>-&gt;</span></button></form>{view === 'signin' && <p className="demo-access">Demo access: <strong>DF-1048 / alex@dayflow.com / Dayflow123!</strong></p>}<p className="legal">By continuing, you agree to our <a href="/">Terms</a> and <a href="/">Privacy Policy</a>.</p></div></section></main>
+  return <main className="auth-page"><section className="brand-panel"><div className="brand-lockup"><span className="brand-mark">d</span><span>dayflow</span></div><div className="brand-copy"><p className="eyebrow">A calmer way to work</p><h1>Make room for<br /><em>good work.</em></h1><p>One clear place for your people, priorities, and daily rhythm.</p></div><p className="principle">Clarity is the beginning of momentum.</p></section><section className="form-panel"><div className="form-inner"><div className="mobile-brand brand-lockup"><span className="brand-mark">d</span><span>dayflow</span></div><header className="form-heading"><p className="eyebrow">Your workspace awaits</p><h2>{view === 'signin' ? 'Welcome back.' : 'Start your flow.'}</h2><p>{view === 'signin' ? 'Sign in to pick up where you left off.' : 'Create your account in less than a minute.'}</p></header><div className="tabs" role="tablist"><button className={view === 'signin' ? 'active' : ''} onClick={() => { setView('signin'); setSignupStep('details'); setFeedback(null) }} role="tab" aria-selected={view === 'signin'}>Sign in</button><button className={view === 'signup' ? 'active' : ''} onClick={() => { setView('signup'); setFeedback(null) }} role="tab" aria-selected={view === 'signup'}>Sign up</button></div><div className="social-auth" aria-label={`${action} with a provider`}><button type="button" className="provider-button"><GoogleIcon />Continue with Google</button><button type="button" className="provider-button"><MicrosoftIcon />Continue with Outlook</button></div><div className="auth-divider"><span>or continue with email</span></div><form onSubmit={submitForm}>{view === 'signup' && signupStep === 'verify' ? <><p className="password-rules">Enter the 6-digit code sent to <strong>{form.email}</strong>.</p><label>Verification code<input name="verificationCode" inputMode="numeric" pattern="[0-9]{6}" maxLength="6" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value)} placeholder="123456" required /></label></> : <>{view === 'signup' && <label>Employee ID<input name="employeeId" value={form.employeeId} onChange={updateForm} placeholder="e.g. DF-1048" required /></label>}<label>Personal email address<input name="email" type="email" value={form.email} onChange={updateForm} placeholder="you@example.com" required /></label><label>Password<div className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={updateForm} placeholder="Enter your password" required /><button type="button" className="show-password" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Hide' : 'Show'}</button></div></label>{view === 'signup' && <label>Designation<select name="designation" value={form.designation} onChange={updateForm}><option>Software Engineer</option><option>Senior Software Engineer</option><option>Manager</option><option>Project Manager</option><option>Business Analyst</option><option>Quality Assurance</option><option>DevOps Engineer</option></select></label>}{view === 'signup' && <p className="password-rules">8+ characters · uppercase · lowercase · number · symbol</p>}</>}{feedback && <p className={`feedback ${feedback.type}`} role="alert">{feedback.text}</p>}<button className="submit-button" type="submit">{view === 'signin' ? 'Sign in to Dayflow' : signupStep === 'verify' ? 'Verify email' : 'Send verification code'} <span>-&gt;</span></button></form>{view === 'signin' && <p className="demo-access">Demo access: <strong>DF-1048 / alex@dayflow.com / Dayflow123!</strong></p>}<p className="legal">By continuing, you agree to our <a href="/">Terms</a> and <a href="/">Privacy Policy</a>.</p></div></section></main>
 }
 
 export default App
+
+
 
 
 
