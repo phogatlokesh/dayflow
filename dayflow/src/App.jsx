@@ -44,7 +44,7 @@ function App() {
       return
     }
     const endpoint = view === 'signin' ? 'signin' : signupStep === 'verify' ? 'signup/verify' : 'signup/request'
-    const body = view === 'signin' ? { email: form.email, password: form.password } : signupStep === 'verify' ? { email: form.email, code: verificationCode } : { employeeId: form.employeeId, email: form.email, password: form.password, designation: form.designation }
+    const body = view === 'signin' ? { employeeId: form.employeeId, email: form.email, password: form.password } : signupStep === 'verify' ? { email: form.email, code: verificationCode } : { employeeId: form.employeeId, email: form.email, password: form.password, designation: form.designation }
     try {
       const response = await fetch(`${API_URL}/api/auth/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const data = await response.json()
@@ -52,7 +52,7 @@ function App() {
       if (view === 'signin') { setIsLoggedIn(true); setUserRole(data.user?.role || 'Employee'); setUserDesignation(form.designation || 'Software Engineer'); setUserId(data.user?.email || form.email); setAuthToken(data.token || ''); return }
       if (signupStep === 'details') { setSignupStep('verify'); setFeedback({ type: 'success', text: 'We sent a 6-digit code to your personal email.' }); return }
       setFeedback({ type: 'success', text: data.message || 'Email verified. Your request is now with HR for approval.' }); setSignupStep('details'); setVerificationCode(''); setView('signin')
-    } catch (error) { setFeedback({ type: 'error', text: 'The server is unavailable. Please try again later.' }) }
+    } catch (error) { setFeedback({ type: 'error', text: `Cannot reach ${API_URL || 'the API server'}. Check that the backend is running and your IP address is current.` }) }
   }
 
   if (isLoggedIn) {
