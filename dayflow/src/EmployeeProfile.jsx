@@ -17,8 +17,8 @@ const initialProfile = {
   paySchedule: 'Monthly',
 }
 
-function EmployeeProfile() {
-  const [profile, setProfile] = useState(initialProfile)
+function EmployeeProfile({ profile: databaseProfile }) {
+  const [profile, setProfile] = useState({ ...initialProfile, ...databaseProfile })
   const [isEditing, setIsEditing] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [saved, setSaved] = useState(false)
