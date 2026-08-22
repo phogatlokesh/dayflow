@@ -24,22 +24,33 @@ function App() {
     setFeedback(null)
   }
 
-  const submitForm = (event) => {
+  const submitForm = async (event) => {
     event.preventDefault()
-    if (view === 'signin') {
-      if (form.email !== 'alex@dayflow.com' || form.password !== 'Dayflow123!') {
-        setFeedback({ type: 'error', text: 'Incorrect email or password. Please try again.' })
-        return
-      }
-      setIsLoggedIn(true)
-      return
-    }
-
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(form.password)) {
+    if (view === 'signup' && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(form.password)) {
       setFeedback({ type: 'error', text: 'Use 8+ characters with uppercase, lowercase, a number, and a symbol.' })
       return
     }
-    setFeedback({ type: 'success', text: 'Account created. Check your email to verify your account before signing in.' })
+
+    try {
+      const response = await fetch(`/api/auth/${view}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setFeedback({ type: 'error', text: data.message || 'Authentication failed. Please try again.' })
+        return
+      }
+      if (view === 'signin') {
+        setIsLoggedIn(true)
+      } else {
+        setFeedback({ type: 'success', text: 'Account created. You can now sign in.' })
+        setView('signin')
+      }
+    } catch {
+      setFeedback({ type: 'error', text: 'The server is unavailable. Please try again shortly.' })
+    }
   }
 
 
