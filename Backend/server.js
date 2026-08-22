@@ -1,4 +1,6 @@
 ﻿require('dotenv').config();
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
@@ -10,9 +12,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const pool = new Pool({ user: process.env.PGUSER || 'postgres', host: process.env.PGHOST || 'localhost', database: process.env.PGDATABASE || 'dayflow', password: process.env.PGPASSWORD || 'Abhishek', port: Number(process.env.PGPORT) || 5433 });
+let pool;
+
+async function createPool() {
+  if (!process.env.DATABASE_URL) {
+    return new Pool({ user: process.env.PGUSER || 'postgres', host: process.env.PGHOST || 'localhost', database: process.env.PGDATABASE || 'dayflow', password: process.env.PGPASSWORD || 'Abhishek', port: Number(process.env.PGPORT) || 5433 });
+  }
+
+  const databaseUrl = new URL(process.env.DATABASE_URL);
+  const address = await dns.promises.lookup(databaseUrl.hostname, { family: 4 });
+  return new Pool({ host: address.address, port: Number(databaseUrl.port) || 5432, user: decodeURIComponent(databaseUrl.username), password: decodeURIComponent(databaseUrl.password), database: databaseUrl.pathname.slice(1), ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false, servername: databaseUrl.hostname } });
+}
 const scrypt = promisify(crypto.scrypt);
 const otpLifetimeMinutes = 10;
+
+app.get('/api/health', async (_req, res) => {
+  try { await pool.query('SELECT 1'); res.json({ status: 'ok' }); }
+  catch { res.status(503).json({ status: 'unavailable' }); }
+});
 
 async function hashValue(value) { const salt = crypto.randomBytes(16).toString('hex'); const key = await scrypt(value, salt, 64); return `${salt}:${key.toString('hex')}`; }
 async function verifyValue(value, hash) { const [salt, key] = hash.split(':'); const derived = await scrypt(value, salt, 64); return crypto.timingSafeEqual(Buffer.from(key, 'hex'), derived); }
@@ -49,15 +66,15 @@ app.post('/api/auth/signup/verify', async (req, res) => {
 });
 
 app.post('/api/auth/signin', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+  const { employeeId, email, password } = req.body;
+  if (!employeeId || !email || !password) return res.status(400).json({ message: 'Employee ID, email, and password are required.' });
   try {
-    const result = await pool.query('SELECT employee_id, email, role, password_hash, approval_status FROM users WHERE email = LOWER($1)', [email.trim()]);
+    const result = await pool.query('SELECT employee_id, email, role, password_hash, approval_status, designation, first_name, last_name, phone, address, department, manager, start_date, employment, salary, pay_schedule FROM users WHERE employee_id = $1 AND email = LOWER($2)', [employeeId.trim(), email.trim()]);
     const user = result.rows[0];
     if (!user || !(await verifyValue(password, user.password_hash))) return res.status(401).json({ message: 'Incorrect email or password. Please try again.' });
     if (user.approval_status === 'pending') return res.status(403).json({ message: 'Your email is verified and your account is awaiting HR approval.' });
     if (user.approval_status === 'rejected') return res.status(403).json({ message: 'Your account request was not approved. Contact HR for help.' });
-    return res.json({ user: { employee_id: user.employee_id, email: user.email, role: user.role }, token: createToken(user) });
+    return res.json({ user: { employee_id: user.employee_id, email: user.email, role: user.role }, profile: { firstName: user.first_name, lastName: user.last_name, name: `${user.first_name} ${user.last_name}`, email: user.email, phone: user.phone, address: user.address, employeeId: user.employee_id, role: user.designation, department: user.department, manager: user.manager, startDate: user.start_date, employment: user.employment, salary: user.salary, paySchedule: user.pay_schedule }, token: createToken(user) });
   } catch (error) { console.error('Signin failed:', error); return res.status(500).json({ message: error.message || 'Unable to sign in.' }); }
 });
 
@@ -65,8 +82,10 @@ app.get('/api/admin/pending-users', authenticate(['HR', 'Admin']), async (_req, 
 app.patch('/api/admin/pending-users/:employeeId', authenticate(['HR', 'Admin']), async (req, res) => { const status = req.body.status === 'approved' ? 'approved' : req.body.status === 'rejected' ? 'rejected' : null; if (!status) return res.status(400).json({ message: 'Use approved or rejected.' }); const result = await pool.query('UPDATE users SET approval_status = $1 WHERE employee_id = $2 AND approval_status = $3 RETURNING employee_id, email, approval_status', [status, req.params.employeeId, 'pending']); if (!result.rowCount) return res.status(404).json({ message: 'Pending employee not found.' }); res.json({ user: result.rows[0] }); });
 
 async function startServer() {
+  pool = await createPool();
   await pool.query(`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, employee_id VARCHAR(100) NOT NULL UNIQUE, email VARCHAR(255) NOT NULL UNIQUE, password_hash TEXT NOT NULL, role VARCHAR(50) NOT NULL DEFAULT 'Employee', approval_status VARCHAR(20) NOT NULL DEFAULT 'approved', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'");
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS designation VARCHAR(100) NOT NULL DEFAULT 'Software Engineer', ADD COLUMN IF NOT EXISTS first_name VARCHAR(100) NOT NULL DEFAULT 'New', ADD COLUMN IF NOT EXISTS last_name VARCHAR(100) NOT NULL DEFAULT 'Employee', ADD COLUMN IF NOT EXISTS phone VARCHAR(50) NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS department VARCHAR(100) NOT NULL DEFAULT 'Engineering', ADD COLUMN IF NOT EXISTS manager VARCHAR(100) NOT NULL DEFAULT 'HR', ADD COLUMN IF NOT EXISTS start_date VARCHAR(100) NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS employment VARCHAR(50) NOT NULL DEFAULT 'Full-time', ADD COLUMN IF NOT EXISTS salary VARCHAR(50) NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS pay_schedule VARCHAR(50) NOT NULL DEFAULT 'Monthly'");
   await pool.query(`CREATE TABLE IF NOT EXISTS pending_signups (id SERIAL PRIMARY KEY, employee_id VARCHAR(100) NOT NULL UNIQUE, email VARCHAR(255) NOT NULL UNIQUE, password_hash TEXT NOT NULL, designation VARCHAR(100), otp_hash TEXT NOT NULL, otp_expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const PORT = process.env.PORT || 5000; app.listen(PORT, '0.0.0.0', () => console.log(`Backend running on http://localhost:${PORT}`));
 }
