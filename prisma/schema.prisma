@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  HR_OFFICER
+  EMPLOYEE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum LeaveType {
+  PAID
+  SICK
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id              String           @id @default(cuid())
+  employeeId      String           @unique
+  email           String           @unique
+  passwordHash    String
+  role            UserRole         @default(EMPLOYEE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  employeeProfile EmployeeProfile?
+  attendance      Attendance[]
+  leaveRequests   LeaveRequest[]   @relation("LeaveApplicant")
+  leaveApprovals  LeaveRequest[]   @relation("LeaveApprover")
+}
+
+model EmployeeProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  firstName    String
+  lastName     String
+  jobTitle     String
+  department   String
+  joiningDate  DateTime
+  baseSalary   Decimal  @db.Decimal(10, 2)
+  documentsUrl String?
+  phone        String?
+  address      String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Attendance {
+  id       String           @id @default(cuid())
+  userId   String
+  date     DateTime
+  checkIn  DateTime?
+  checkOut DateTime?
+  status   AttendanceStatus @default(PRESENT)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  applicantId String
+  approverId  String?
+  leaveType   LeaveType
+  startDate   DateTime
+  endDate     DateTime
+  remarks     String?
+  status      LeaveStatus @default(PENDING)
+  hrComments  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  applicant User  @relation("LeaveApplicant", fields: [applicantId], references: [id], onDelete: Cascade)
+  approver  User? @relation("LeaveApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([startDate, endDate])
+}
