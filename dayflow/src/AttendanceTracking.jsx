@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import './AttendanceTracking.css';
 
-function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com' }) {
+function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com', userDesignation = 'Software Engineer' }) {
 
   const [viewMode, setViewMode] = useState('daily'); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [employees, setEmployees] = useState([
-    { id: 1, name: 'John Doe', email: 'john@example.com', status: 'Present', checkIn: '09:00 AM', checkOut: '05:30 PM' },
-    { id: 2, name: 'Jane Smith', email: 'jane@example.com', status: 'Absent', checkIn: '-', checkOut: '-' },
-    { id: 3, name: 'Mike Johnson', email: 'mike@example.com', status: 'Half-day', checkIn: '09:15 AM', checkOut: '01:00 PM' },
-    { id: 4, name: 'Sarah Williams', email: 'sarah@example.com', status: 'Leave', checkIn: '-', checkOut: '-' },
-    { id: 5, name: 'Tom Brown', email: 'tom@example.com', status: 'Present', checkIn: '08:50 AM', checkOut: '05:45 PM' },
+    { id: 1, name: 'John Doe', email: 'john@example.com', designation: 'Software Engineer', status: 'Present', checkIn: '09:00 AM', checkOut: '05:30 PM' },
+    { id: 2, name: 'Jane Smith', email: 'jane@example.com', designation: 'HR Manager', status: 'Absent', checkIn: '-', checkOut: '-' },
+    { id: 3, name: 'Mike Johnson', email: 'mike@example.com', designation: 'Senior Software Engineer', status: 'Half-day', checkIn: '09:15 AM', checkOut: '01:00 PM' },
+    { id: 4, name: 'Sarah Williams', email: 'sarah@example.com', designation: 'Manager', status: 'Leave', checkIn: '-', checkOut: '-' },
+    { id: 5, name: 'Tom Brown', email: 'tom@example.com', designation: 'DevOps Engineer', status: 'Present', checkIn: '08:50 AM', checkOut: '05:45 PM' },
   ]);
 
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -141,6 +141,7 @@ function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com'
           <div className="attendance-grid">
             <div className="grid-header">
               <div className="col-name">Employee</div>
+              <div className="col-designation">Designation</div>
               <div className="col-status">Status</div>
               <div className="col-checkin">Check-In</div>
               <div className="col-checkout">Check-Out</div>
@@ -150,6 +151,7 @@ function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com'
             {getVisibleEmployees().map(employee => (
               <div key={employee.id} className="grid-row">
                 <div className="col-name">{employee.name}</div>
+                <div className="col-designation">{employee.designation}</div>
                 <div className="col-status">
                   <select
                     className="status-select"
