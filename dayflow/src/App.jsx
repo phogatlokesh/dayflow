@@ -4,6 +4,7 @@ import AttendanceTracking from './AttendanceTracking'
 import EmployeeProfile from './EmployeeProfile'
 import LeaveManagement from './LeaveManagement'
 import PayrollManagement from './PayrollManagement'
+import Dashboard from './Dashboard'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -21,7 +22,7 @@ function App() {
   const [showPassword, setShowPassword] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [dashboardView, setDashboardView] = useState('profile')
+  const [dashboardView, setDashboardView] = useState('dashboard')
   const [userRole, setUserRole] = useState('Employee')
   const [userId, setUserId] = useState(null)
   const [userDesignation, setUserDesignation] = useState('Software Engineer')
@@ -71,7 +72,7 @@ function App() {
 
 
   if (isLoggedIn) {
-    return <main className="dashboard-page"><nav className="topbar"><a href="/" className="brand"><span className="brand-mark">d</span>dayflow</a><div className="workspace-nav"><button className={dashboardView === 'profile' ? 'active' : ''} onClick={() => setDashboardView('profile')}>My profile</button><button className={dashboardView === 'attendance' ? 'active' : ''} onClick={() => setDashboardView('attendance')}>Attendance</button><button className={dashboardView === 'leave' ? 'active' : ''} onClick={() => setDashboardView('leave')}>Leave & time off</button><button className={dashboardView === 'payroll' ? 'active' : ''} onClick={() => setDashboardView('payroll')}>Payroll</button></div><button className="secondary-button" onClick={() => setIsLoggedIn(false)}>Sign out</button></nav>{dashboardView === 'profile' ? <EmployeeProfile profile={userProfile} /> : dashboardView === 'attendance' ? <AttendanceTracking userRole={userRole} userId={userId} userDesignation={userDesignation} /> : dashboardView === 'leave' ? <LeaveManagement userRole={userRole} userId={userId} /> : <PayrollManagement userRole={userRole} userId={userId} />}</main>
+    return <main className="dashboard-page"><nav className="topbar"><a href="/" className="brand"><span className="brand-mark">d</span>dayflow</a><div className="workspace-nav"><button className={dashboardView === 'dashboard' ? 'active' : ''} onClick={() => setDashboardView('dashboard')}>Dashboard</button><button className={dashboardView === 'profile' ? 'active' : ''} onClick={() => setDashboardView('profile')}>My profile</button><button className={dashboardView === 'attendance' ? 'active' : ''} onClick={() => setDashboardView('attendance')}>Attendance</button><button className={dashboardView === 'leave' ? 'active' : ''} onClick={() => setDashboardView('leave')}>Leave & time off</button><button className={dashboardView === 'payroll' ? 'active' : ''} onClick={() => setDashboardView('payroll')}>Payroll</button></div><button className="secondary-button" onClick={() => setIsLoggedIn(false)}>Sign out</button></nav>{dashboardView === 'dashboard' ? <Dashboard userRole={userRole} userName={userProfile?.name || form.email} userEmail={userProfile?.email || form.email} userDesignation={userDesignation} onNavigate={setDashboardView} onLogout={() => setIsLoggedIn(false)} /> : dashboardView === 'profile' ? <EmployeeProfile profile={userProfile} /> : dashboardView === 'attendance' ? <AttendanceTracking userRole={userRole} userId={userId} userDesignation={userDesignation} /> : dashboardView === 'leave' ? <LeaveManagement userRole={userRole} userId={userId} /> : <PayrollManagement userRole={userRole} userId={userId} />}</main>
   }
 
   const action = view === 'signin' ? 'Sign in' : 'Sign up'
