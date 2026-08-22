@@ -18,6 +18,8 @@ function App() {
   const [feedback, setFeedback] = useState(null)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [dashboardView, setDashboardView] = useState('profile')
+  const [userRole, setUserRole] = useState('Employee')
+  const [userId, setUserId] = useState(null)
 
   const updateForm = (event) => {
     setForm({ ...form, [event.target.name]: event.target.value })
@@ -44,6 +46,8 @@ function App() {
       }
       if (view === 'signin') {
         setIsLoggedIn(true)
+        setUserRole(form.role)
+        setUserId(form.employeeId || form.email)
       } else {
         setFeedback({ type: 'success', text: 'Account created. You can now sign in.' })
         setView('signin')
@@ -55,7 +59,7 @@ function App() {
 
 
   if (isLoggedIn) {
-    return <main className="dashboard-page"><nav className="topbar"><a href="/" className="brand"><span className="brand-mark">d</span>dayflow</a><div className="workspace-nav"><button className={dashboardView === 'profile' ? 'active' : ''} onClick={() => setDashboardView('profile')}>My profile</button><button className={dashboardView === 'attendance' ? 'active' : ''} onClick={() => setDashboardView('attendance')}>Attendance</button></div><button className="secondary-button" onClick={() => setIsLoggedIn(false)}>Sign out</button></nav>{dashboardView === 'profile' ? <EmployeeProfile /> : <AttendanceTracking />}</main>
+    return <main className="dashboard-page"><nav className="topbar"><a href="/" className="brand"><span className="brand-mark">d</span>dayflow</a><div className="workspace-nav"><button className={dashboardView === 'profile' ? 'active' : ''} onClick={() => setDashboardView('profile')}>My profile</button><button className={dashboardView === 'attendance' ? 'active' : ''} onClick={() => setDashboardView('attendance')}>Attendance</button></div><button className="secondary-button" onClick={() => setIsLoggedIn(false)}>Sign out</button></nav>{dashboardView === 'profile' ? <EmployeeProfile /> : <AttendanceTracking userRole={userRole} userId={userId} />}</main>
   }
 
   const action = view === 'signin' ? 'Sign in' : 'Sign up'

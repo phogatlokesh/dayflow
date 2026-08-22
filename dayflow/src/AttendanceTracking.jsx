@@ -1,20 +1,30 @@
 import { useState } from 'react';
 import './AttendanceTracking.css';
 
-function AttendanceTracking() {
+function AttendanceTracking({ userRole = 'Employee', userId = 'john@example.com' }) {
 
   const [viewMode, setViewMode] = useState('daily'); 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [employees, setEmployees] = useState([
-    { id: 1, name: 'John Doe', status: 'Present', checkIn: '09:00 AM', checkOut: '05:30 PM' },
-    { id: 2, name: 'Jane Smith', status: 'Absent', checkIn: '-', checkOut: '-' },
-    { id: 3, name: 'Mike Johnson', status: 'Half-day', checkIn: '09:15 AM', checkOut: '01:00 PM' },
-    { id: 4, name: 'Sarah Williams', status: 'Leave', checkIn: '-', checkOut: '-' },
-    { id: 5, name: 'Tom Brown', status: 'Present', checkIn: '08:50 AM', checkOut: '05:45 PM' },
+    { id: 1, name: 'John Doe', email: 'john@example.com', status: 'Present', checkIn: '09:00 AM', checkOut: '05:30 PM' },
+    { id: 2, name: 'Jane Smith', email: 'jane@example.com', status: 'Absent', checkIn: '-', checkOut: '-' },
+    { id: 3, name: 'Mike Johnson', email: 'mike@example.com', status: 'Half-day', checkIn: '09:15 AM', checkOut: '01:00 PM' },
+    { id: 4, name: 'Sarah Williams', email: 'sarah@example.com', status: 'Leave', checkIn: '-', checkOut: '-' },
+    { id: 5, name: 'Tom Brown', email: 'tom@example.com', status: 'Present', checkIn: '08:50 AM', checkOut: '05:45 PM' },
   ]);
 
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showCheckModal, setShowCheckModal] = useState(false);
+
+  // Filter employees based on role
+  const getVisibleEmployees = () => {
+    if (userRole === 'HR') {
+      return employees;
+    } else {
+      // Employee can only see their own attendance
+      return employees.filter(emp => emp.email === userId);
+    }
+  };
 
   const getWeekDates = (date) => {
     const curr = new Date(date);
@@ -90,7 +100,12 @@ function AttendanceTracking() {
   return (
     <div className="attendance-container">
       <div className="attendance-header">
-        <h1>Attendance Management</h1>
+        <div className="header-left">
+          <h1>Attendance Management</h1>
+          <span className="role-badge" style={{ backgroundColor: userRole === 'HR' ? '#1976D2' : '#4CAF50' }}>
+            {userRole}
+          </span>
+        </div>
         <div className="view-switcher">
           <button
             className={`btn ${viewMode === 'daily' ? 'active' : ''}`}
@@ -132,7 +147,7 @@ function AttendanceTracking() {
               <div className="col-actions">Actions</div>
             </div>
 
-            {employees.map(employee => (
+            {getVisibleEmployees().map(employee => (
               <div key={employee.id} className="grid-row">
                 <div className="col-name">{employee.name}</div>
                 <div className="col-status">
@@ -140,6 +155,7 @@ function AttendanceTracking() {
                     className="status-select"
                     value={employee.status}
                     onChange={(e) => updateStatus(employee.id, e.target.value)}
+                    disabled={userRole === 'Employee'}
                     style={{ borderColor: getStatusColor(employee.status) }}
                   >
                     <option value="Present">Present</option>
@@ -157,24 +173,30 @@ function AttendanceTracking() {
                 <div className="col-checkin">{employee.checkIn}</div>
                 <div className="col-checkout">{employee.checkOut}</div>
                 <div className="col-actions">
-                  <button
-                    className="action-btn check-in-btn"
-                    onClick={() => {
-                      setSelectedEmployee(employee.id);
-                      setShowCheckModal(true);
-                    }}
-                  >
-                    Check-In
-                  </button>
-                  <button
-                    className="action-btn check-out-btn"
-                    onClick={() => {
-                      setSelectedEmployee(employee.id);
-                      setShowCheckModal(true);
-                    }}
-                  >
-                    Check-Out
-                  </button>
+                  {userRole === 'HR' ? (
+                    <>
+                      <button
+                        className="action-btn check-in-btn"
+                        onClick={() => {
+                          setSelectedEmployee(employee.id);
+                          setShowCheckModal(true);
+                        }}
+                      >
+                        Check-In
+                      </button>
+                      <button
+                        className="action-btn check-out-btn"
+                        onClick={() => {
+                          setSelectedEmployee(employee.id);
+                          setShowCheckModal(true);
+                        }}
+                      >
+                        Check-Out
+                      </button>
+                    </>
+                  ) : (
+                    <span className="view-only-badge">View Only</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -192,7 +214,7 @@ function AttendanceTracking() {
                   <div className="day-date">{formatDate(date)}</div>
                 </div>
                 <div className="day-content">
-                  {employees.map(employee => (
+                  {getVisibleEmployees().map(employee => (
                     <div key={employee.id} className="week-employee-row">
                       <div className="week-emp-name">{employee.name.split(' ')[0]}</div>
                       <span
